@@ -1,5 +1,13 @@
 {
   "version": "7",
   "dialect": "postgresql",
-  "entries": []
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1790803085584,
+      "tag": "0000_journals_sharing",
+      "breakpoints": true
+    }
+  ]
 }

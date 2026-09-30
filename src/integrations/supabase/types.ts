@@ -14,13 +14,223 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      handwriting_profiles: {
+        Row: {
+          created_at: number
+          glyphs: Json
+          id: string
+          name: string
+          owner_id: string
+        }
+        Insert: {
+          created_at?: number
+          glyphs?: Json
+          id: string
+          name: string
+          owner_id?: string
+        }
+        Update: {
+          created_at?: number
+          glyphs?: Json
+          id?: string
+          name?: string
+          owner_id?: string
+        }
+        Relationships: []
+      }
+      journal_items: {
+        Row: {
+          created_by: string | null
+          data: Json
+          id: string
+          journal_id: string
+          page_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_by?: string | null
+          data: Json
+          id: string
+          journal_id: string
+          page_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_by?: string | null
+          data?: Json
+          id?: string
+          journal_id?: string
+          page_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "journal_items_journal_id_fkey"
+            columns: ["journal_id"]
+            isOneToOne: false
+            referencedRelation: "journals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "journal_items_page_id_fkey"
+            columns: ["page_id"]
+            isOneToOne: false
+            referencedRelation: "journal_pages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      journal_members: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          journal_id: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+          journal_id: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          journal_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "journal_members_journal_id_fkey"
+            columns: ["journal_id"]
+            isOneToOne: false
+            referencedRelation: "journals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      journal_pages: {
+        Row: {
+          created_by: string | null
+          id: string
+          journal_id: string
+          paper: string
+          position: number
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_by?: string | null
+          id: string
+          journal_id: string
+          paper?: string
+          position?: number
+          title?: string
+          updated_at?: string
+        }
+        Update: {
+          created_by?: string | null
+          id?: string
+          journal_id?: string
+          paper?: string
+          position?: number
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "journal_pages_journal_id_fkey"
+            columns: ["journal_id"]
+            isOneToOne: false
+            referencedRelation: "journals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      journal_share_links: {
+        Row: {
+          created_at: string
+          journal_id: string
+          token: string
+        }
+        Insert: {
+          created_at?: string
+          journal_id: string
+          token?: string
+        }
+        Update: {
+          created_at?: string
+          journal_id?: string
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "journal_share_links_journal_id_fkey"
+            columns: ["journal_id"]
+            isOneToOne: true
+            referencedRelation: "journals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      journals: {
+        Row: {
+          cover: string
+          created_at: string
+          id: string
+          owner_id: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          cover?: string
+          created_at?: string
+          id?: string
+          owner_id?: string
+          title?: string
+          updated_at?: string
+        }
+        Update: {
+          cover?: string
+          created_at?: string
+          id?: string
+          owner_id?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          display_name: string | null
+          email: string
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          display_name?: string | null
+          email: string
+          id: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string | null
+          email?: string
+          id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      current_email: { Args: never; Returns: string }
+      get_shared_journal: { Args: { _token: string }; Returns: Json }
+      has_journal_access: { Args: { _j: string }; Returns: boolean }
+      is_journal_owner: { Args: { _j: string }; Returns: boolean }
+      shares_journal_with: { Args: { _other: string }; Returns: boolean }
     }
     Enums: {
       [_ in never]: never
