@@ -79,8 +79,13 @@ export async function loadJournal(id: string) {
 export function pageKey(page: JournalPage, position: number) {
   return JSON.stringify({ position, title: page.title, paper: page.paper });
 }
+function stable(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stable).join(",")}]`;
+  if (value && typeof value === "object") return `{${Object.keys(value).filter((key) => (value as Record<string, unknown>)[key] !== undefined).sort().map((key) => `${JSON.stringify(key)}:${stable((value as Record<string, unknown>)[key])}`).join(",")}}`;
+  return JSON.stringify(value);
+}
 export function itemKey(item: JournalItem, pageId: string) {
-  return JSON.stringify({ pageId, data: itemData(item) });
+  return stable({ pageId, data: itemData(item) });
 }
 
 export function snapshotOf(pages: JournalPage[]) {
