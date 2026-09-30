@@ -10,3 +10,5 @@
 <!-- LOVABLE:END -->
 
 - Keep journal data browser-local and model the editor as pages containing independently transformed elements; this preserves offline autosave and freeform composition without backend complexity.
+- Handwriting profiles and image glyph data live in IndexedDB; journal text stores only profile references and display settings to keep autosave small.
+- Per-character visual variation is deterministic from the text item and character position so the handwritten result remains stable across rendering and export.

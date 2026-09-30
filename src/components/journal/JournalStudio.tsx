@@ -8,6 +8,8 @@ import {
   FileImage,
   FilePlus2,
   ImagePlus,
+  NotebookPen,
+  Palette,
   Layers,
   Minus,
   MoreHorizontal,
@@ -32,6 +34,10 @@ import {
 } from "react";
 import { toPng } from "html-to-image";
 import { jsPDF } from "jspdf";
+import HandwritingStudio from "./HandwritingStudio";
+import { HandwritingText } from "./HandwritingText";
+import type { HandwritingProfile } from "./handwriting";
+import { deleteProfile, loadProfiles, saveProfile } from "./handwritingStorage";
 
 type Paper = "vintage" | "lined" | "graph" | "kraft" | "torn";
 type Kind = "text" | "image" | "sticker" | "tape" | "scrap" | "ticket" | "stamp" | "doodle";
@@ -50,6 +56,9 @@ type JournalItem = {
   frame?: Frame;
   cropX?: number;
   cropY?: number;
+  profileId?: string;
+  inkColor?: string;
+  fontSize?: number;
 };
 
 type JournalPage = { id: string; title: string; paper: Paper; items: JournalItem[] };
@@ -119,7 +128,7 @@ function ToolButton({ label, onClick, active, children }: { label: string; onCli
   );
 }
 
-function ItemContent({ item }: { item: JournalItem }) {
+function ItemContent({ item, profiles = [] }: { item: JournalItem; profiles?: HandwritingProfile[] }) {
   if (item.kind === "image") {
     return (
       <div className={`image-frame frame-${item.frame ?? "none"}`}>
@@ -127,7 +136,7 @@ function ItemContent({ item }: { item: JournalItem }) {
       </div>
     );
   }
-  if (item.kind === "text") return <div className="journal-writing">{item.content}</div>;
+  if (item.kind === "text") return <div className="journal-writing"><HandwritingText itemId={item.id} text={item.content} profile={profiles.find((profile) => profile.id === item.profileId)} color={item.inkColor ?? "#3b302a"} size={item.fontSize ?? 28} /></div>;
   if (item.kind === "sticker") return <div className="sticker-art">{item.content}</div>;
   if (item.kind === "tape") return <div className={`tape-strip tape-${item.content}`} />;
   if (item.kind === "ticket") return <div className="ticket-art">{item.content}</div>;
@@ -136,9 +145,10 @@ function ItemContent({ item }: { item: JournalItem }) {
   return <div className="paper-scrap">{item.content}</div>;
 }
 
-function EditableItem({ item, selected, onSelect, onChange, onDelete }: {
+function EditableItem({ item, selected, profiles, onSelect, onChange, onDelete }: {
   item: JournalItem;
   selected: boolean;
+  profiles: HandwritingProfile[];
   onSelect: () => void;
   onChange: (patch: Partial<JournalItem>) => void;
   onDelete: () => void;
@@ -196,24 +206,27 @@ function EditableItem({ item, selected, onSelect, onChange, onDelete }: {
       className={`journal-item ${selected ? "journal-item-selected" : ""}`}
       style={{ left: `${item.x}%`, top: `${item.y}%`, width: `${item.width}%`, height: `${item.height}%`, transform: `rotate(${item.rotation}deg)`, zIndex: item.z }}
       onPointerDown={startDrag}
-      onDoubleClick={() => item.kind === "text" && onChange({ content: window.prompt("Edit your note", item.content) ?? item.content })}
+      onDoubleClick={() => item.kind === "text" && onSelect()}
       role="button"
       tabIndex={0}
       aria-label={`${item.kind} element`}
       onKeyDown={(event) => event.key === "Delete" && onDelete()}
     >
-      <ItemContent item={item} />
+      <ItemContent item={item} profiles={profiles} />
       {selected && <button type="button" data-handle="resize" aria-label="Resize item" className="resize-handle" onPointerDown={startResize} />}
     </div>
   );
 }
 
 export default function JournalStudio() {
-  const [journal, setJournal] = useState<JournalState>(starterState);
+  const [journal, setJournal] = useState<JournalState>({ pages: [], active: 0 });
   const [selected, setSelected] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [turning, setTurning] = useState(false);
   const [tab, setTab] = useState<"supplies" | "paper">("supplies");
+  const [profiles, setProfiles] = useState<HandwritingProfile[]>([]);
+  const [activeProfileId, setActiveProfileId] = useState<string>();
+  const [handwritingOpen, setHandwritingOpen] = useState(false);
   const spreadRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const hydrated = useRef(false);
@@ -222,8 +235,15 @@ export default function JournalStudio() {
     const stored = window.localStorage.getItem(STORAGE_KEY);
     if (stored) {
       try { setJournal(JSON.parse(stored) as JournalState); } catch { window.localStorage.removeItem(STORAGE_KEY); }
-    }
+    } else setJournal(starterState());
     hydrated.current = true;
+  }, []);
+
+  useEffect(() => {
+    void loadProfiles().then((stored) => {
+      setProfiles(stored);
+      setActiveProfileId((current) => current ?? stored[0]?.id);
+    });
   }, []);
 
   useEffect(() => {
@@ -251,6 +271,8 @@ export default function JournalStudio() {
   );
   const selectedItem = journal.pages.flatMap((page) => page.items).find((item) => item.id === selected);
 
+  if (journal.pages.length === 0) return <main className="studio-loading" aria-label="Opening journal"><Sparkles size={22} /></main>;
+
   const updatePage = (pageId: string, updater: (page: JournalPage) => JournalPage) => {
     setJournal((current) => ({ ...current, pages: current.pages.map((page) => page.id === pageId ? updater(page) : page) }));
   };
@@ -259,7 +281,7 @@ export default function JournalStudio() {
     if (!pageId) return;
     const sizes: Record<Kind, [number, number]> = { text: [42, 15], image: [42, 34], sticker: [18, 18], tape: [34, 8], scrap: [42, 24], ticket: [28, 15], stamp: [18, 13], doodle: [28, 10] };
     const [width, height] = sizes[kind];
-    const item: JournalItem = { id: makeId(), kind, content, x: 25, y: 28, width, height, rotation: kind === "text" ? -1 : 2, z: Date.now(), ...(kind === "image" ? { frame: "polaroid" as const } : {}) };
+    const item: JournalItem = { id: makeId(), kind, content, x: 25, y: 28, width, height, rotation: kind === "text" ? -1 : 2, z: Date.now(), ...(kind === "image" ? { frame: "polaroid" as const } : {}), ...(kind === "text" ? { ...(activeProfileId ? { profileId: activeProfileId } : {}), inkColor: "#3b302a", fontSize: 28 } : {}) };
     updatePage(pageId, (page) => ({ ...page, items: [...page.items, item] }));
     setSelected(item.id);
   };
@@ -331,6 +353,20 @@ export default function JournalStudio() {
     }, 60);
   };
 
+  const persistProfile = (profile: HandwritingProfile) => {
+    void saveProfile(profile).then(() => {
+      setProfiles((current) => [...current.filter((entry) => entry.id !== profile.id), profile]);
+      setActiveProfileId(profile.id);
+    });
+  };
+
+  const removeProfile = (id: string) => {
+    void deleteProfile(id).then(() => {
+      setProfiles((current) => current.filter((profile) => profile.id !== id));
+      setActiveProfileId((current) => current === id ? undefined : current);
+    });
+  };
+
   return (
     <main className="studio-shell" onClick={() => setSelected(null)}>
       <header className="studio-header">
@@ -355,11 +391,12 @@ export default function JournalStudio() {
                 <button type="button" onClick={() => fileRef.current?.click()}><Upload size={20} /><span>Photo</span></button>
                 <input ref={fileRef} type="file" accept="image/*" hidden onChange={(event: ChangeEvent<HTMLInputElement>) => event.target.files?.[0] && addImage(event.target.files[0])} />
               </div>
+              <button type="button" className="handwriting-launch" onClick={() => setHandwritingOpen(true)}><NotebookPen size={19} /><span><strong>My Handwriting</strong><small>{profiles.length ? `${profiles.length} saved profile${profiles.length === 1 ? "" : "s"}` : "Turn your writing into type"}</small></span></button>
               <p className="drawer-label">Bits & pieces</p>
               <div className="supply-grid">
                 {craftItems.map((supply, index) => (
                   <button type="button" key={`${supply.label}-${index}`} className={`supply-piece supply-${supply.kind}`} title={supply.label} onClick={() => addItem(supply.kind, supply.content)}>
-                    <ItemContent item={{ id: "preview", x: 0, y: 0, width: 100, height: 100, rotation: 0, z: 0, ...supply }} />
+                    <ItemContent item={{ id: "preview", x: 0, y: 0, width: 100, height: 100, rotation: 0, z: 0, ...supply }} profiles={profiles} />
                   </button>
                 ))}
               </div>
@@ -402,8 +439,23 @@ export default function JournalStudio() {
                 if (page) patchItem(page.id, selectedItem.id, { frame: next[selectedItem.frame ?? "none"] });
               }}><Crop size={16} /></ToolButton>}
               <ToolButton label="Delete" onClick={() => selectedAction("delete")}><Trash2 size={16} /></ToolButton>
+              {selectedItem.kind === "text" && <><i /><label className="ink-control" title="Ink color"><Palette size={15} /><input aria-label="Ink color" type="color" value={selectedItem.inkColor ?? "#3b302a"} onChange={(event) => {
+                const page = journal.pages.find((candidate) => candidate.items.some((item) => item.id === selectedItem.id));
+                if (page) patchItem(page.id, selectedItem.id, { inkColor: event.target.value });
+              }} /></label><label className="size-control">Size <input aria-label="Text size" type="range" min="14" max="58" value={selectedItem.fontSize ?? 28} onChange={(event) => {
+                const page = journal.pages.find((candidate) => candidate.items.some((item) => item.id === selectedItem.id));
+                if (page) patchItem(page.id, selectedItem.id, { fontSize: Number(event.target.value) });
+              }} /></label><select aria-label="Handwriting profile" value={selectedItem.profileId ?? ""} onChange={(event) => {
+                const page = journal.pages.find((candidate) => candidate.items.some((item) => item.id === selectedItem.id));
+                if (page) patchItem(page.id, selectedItem.id, event.target.value ? { profileId: event.target.value } : { profileId: "" });
+              }}><option value="">Default pen</option>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</select></>}
             </div>
           )}
+
+          {selectedItem?.kind === "text" && <div className="text-editor-panel" onClick={(event) => event.stopPropagation()}><textarea aria-label="Edit journal text" autoFocus value={selectedItem.content} onChange={(event) => {
+            const page = journal.pages.find((candidate) => candidate.items.some((item) => item.id === selectedItem.id));
+            if (page) patchItem(page.id, selectedItem.id, { content: event.target.value });
+          }} /></div>}
 
           <button type="button" aria-label="Previous page" className="page-arrow page-arrow-left" onClick={() => turn(-1)}><ChevronLeft /></button>
           <div ref={spreadRef} className={`journal-spread ${turning ? "page-turning" : ""}`}>
@@ -417,7 +469,7 @@ export default function JournalStudio() {
               >
                 <span className="page-corner-mark">{String(journal.pages.indexOf(page) + 1).padStart(2, "0")}</span>
                 {page.items.map((item) => (
-                  <EditableItem key={item.id} item={item} selected={selected === item.id} onSelect={() => setSelected(item.id)} onChange={(patch) => patchItem(page.id, item.id, patch)} onDelete={() => removeItem(page.id, item.id)} />
+                  <EditableItem key={item.id} item={item} profiles={profiles} selected={selected === item.id} onSelect={() => setSelected(item.id)} onChange={(patch) => patchItem(page.id, item.id, patch)} onDelete={() => removeItem(page.id, item.id)} />
                 ))}
                 {page.items.length === 0 && <div className="empty-page"><span>✦</span><p>make a little mess</p><small>drop, paste, or choose something from the drawer</small></div>}
               </article>
@@ -461,6 +513,7 @@ export default function JournalStudio() {
           <span>{journal.active + 1} / {journal.pages.length}</span>
         </div>
       </footer>
+      {handwritingOpen && <HandwritingStudio profiles={profiles} activeId={activeProfileId} onSave={persistProfile} onDelete={removeProfile} onSelect={setActiveProfileId} onClose={() => setHandwritingOpen(false)} />}
     </main>
   );
 }
