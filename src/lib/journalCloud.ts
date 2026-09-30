@@ -14,7 +14,7 @@ export async function currentUser() {
 export async function ensureProfile(user: User) {
   if (!user.email) return;
   const name = (user.user_metadata?.["full_name"] as string | undefined) ?? user.email.split("@")[0];
-  await supabase.from("profiles").upsert({ id: user.id, email: user.email.toLowerCase(), display_name: name }, { onConflict: "id" });
+  await supabase.from("profiles").upsert({ id: user.id, email: user.email.toLowerCase(), display_name: name ?? null }, { onConflict: "id" });
 }
 
 export async function listJournals() {
