@@ -1,24 +1,21 @@
 import {
-  ArrowDownToLine,
+  ArrowLeft,
   ChevronLeft,
   ChevronRight,
   Copy,
   Crop,
   Download,
   FileImage,
-  FilePlus2,
   ImagePlus,
   NotebookPen,
   Palette,
   Layers,
-  Minus,
-  MoreHorizontal,
   Plus,
   RotateCw,
   Scissors,
   SendToBack,
+  Share2,
   Sparkles,
-  Stamp,
   Trash2,
   Type,
   Upload,
@@ -27,44 +24,38 @@ import {
   type ChangeEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
+import { Link } from "@tanstack/react-router";
 import { toPng } from "html-to-image";
 import { jsPDF } from "jspdf";
+import { supabase } from "@/integrations/supabase/client";
 import HandwritingStudio from "./HandwritingStudio";
 import { HandwritingText } from "./HandwritingText";
+import SharePanel from "./SharePanel";
 import type { HandwritingProfile } from "./handwriting";
-import { deleteProfile, loadProfiles, saveProfile } from "./handwritingStorage";
+import { deleteProfile, loadProfiles, loadProfilesByIds, saveProfile } from "./handwritingStorage";
+import { type Frame, type JournalItem, type JournalPage, type JournalState, type Kind, type Paper, makeId, personColor } from "./types";
+import {
+  type JournalMeta,
+  type Person,
+  currentUser,
+  downscaleImage,
+  ensureProfile,
+  itemKey,
+  loadJournal,
+  loadPeople,
+  pageKey,
+  pushChanges,
+  rowToItem,
+  snapshotOf,
+} from "@/lib/journalCloud";
 
-type Paper = "vintage" | "lined" | "graph" | "kraft" | "torn";
-type Kind = "text" | "image" | "sticker" | "tape" | "scrap" | "ticket" | "stamp" | "doodle";
-type Frame = "none" | "polaroid" | "torn";
-
-type JournalItem = {
-  id: string;
-  kind: Kind;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  rotation: number;
-  z: number;
-  content: string;
-  frame?: Frame;
-  cropX?: number;
-  cropY?: number;
-  profileId?: string;
-  inkColor?: string;
-  fontSize?: number;
-};
-
-type JournalPage = { id: string; title: string; paper: Paper; items: JournalItem[] };
-type JournalState = { pages: JournalPage[]; active: number };
-
-const STORAGE_KEY = "tucked-away-journal-v1";
+export const LOCAL_STORAGE_KEY = "tucked-away-journal-v1";
 const PAPER_NAMES: Record<Paper, string> = {
   vintage: "Vintage",
   lined: "Lined",
@@ -85,41 +76,6 @@ const craftItems: Array<{ kind: Kind; content: string; label: string }> = [
   { kind: "doodle", content: "✦ 〰 ✦", label: "Doodle" },
 ];
 
-function makeId() {
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
-function starterState(): JournalState {
-  return {
-    active: 0,
-    pages: [
-      {
-        id: makeId(),
-        title: "Found things",
-        paper: "vintage",
-        items: [
-          { id: makeId(), kind: "text", x: 9, y: 9, width: 45, height: 14, rotation: -2, z: 2, content: "little things worth keeping" },
-          { id: makeId(), kind: "ticket", x: 62, y: 13, width: 28, height: 15, rotation: 5, z: 3, content: "ADMIT ONE\nNo. 0427" },
-          { id: makeId(), kind: "scrap", x: 12, y: 50, width: 40, height: 24, rotation: 3, z: 1, content: "September notes\n\nslow mornings, old songs,\nand the smell of rain" },
-          { id: makeId(), kind: "sticker", x: 68, y: 56, width: 18, height: 18, rotation: -9, z: 4, content: "🌼" },
-          { id: makeId(), kind: "tape", x: 30, y: 44, width: 31, height: 8, rotation: -5, z: 5, content: "botanical" },
-        ],
-      },
-      {
-        id: makeId(),
-        title: "Daydreams",
-        paper: "lined",
-        items: [
-          { id: makeId(), kind: "text", x: 12, y: 12, width: 48, height: 13, rotation: 1, z: 2, content: "notes from nowhere" },
-          { id: makeId(), kind: "doodle", x: 60, y: 28, width: 28, height: 10, rotation: 8, z: 1, content: "✦ 〰 ✦" },
-          { id: makeId(), kind: "scrap", x: 16, y: 48, width: 55, height: 23, rotation: -2, z: 3, content: "Collect moments,\nnot things." },
-        ],
-      },
-      { id: makeId(), title: "Oddments", paper: "kraft", items: [] },
-    ],
-  };
-}
-
 function ToolButton({ label, onClick, active, children }: { label: string; onClick?: () => void; active?: boolean; children: ReactNode }) {
   return (
     <button type="button" aria-label={label} title={label} onClick={onClick} className={`tool-button ${active ? "tool-button-active" : ""}`}>
@@ -128,7 +84,7 @@ function ToolButton({ label, onClick, active, children }: { label: string; onCli
   );
 }
 
-function ItemContent({ item, profiles = [] }: { item: JournalItem; profiles?: HandwritingProfile[] }) {
+export function ItemContent({ item, profiles = [] }: { item: JournalItem; profiles?: HandwritingProfile[] }) {
   if (item.kind === "image") {
     return (
       <div className={`image-frame frame-${item.frame ?? "none"}`}>
@@ -145,10 +101,11 @@ function ItemContent({ item, profiles = [] }: { item: JournalItem; profiles?: Ha
   return <div className="paper-scrap">{item.content}</div>;
 }
 
-function EditableItem({ item, selected, profiles, onSelect, onChange, onDelete }: {
+function EditableItem({ item, selected, profiles, tag, onSelect, onChange, onDelete }: {
   item: JournalItem;
   selected: boolean;
   profiles: HandwritingProfile[];
+  tag?: { label: string; name: string; color: string } | undefined;
   onSelect: () => void;
   onChange: (patch: Partial<JournalItem>) => void;
   onDelete: () => void;
@@ -213,31 +170,60 @@ function EditableItem({ item, selected, profiles, onSelect, onChange, onDelete }
       onKeyDown={(event) => event.key === "Delete" && onDelete()}
     >
       <ItemContent item={item} profiles={profiles} />
+      {tag && <span className="maker-tag" title={`Added by ${tag.name}`} style={{ background: tag.color }}>{tag.label}</span>}
       {selected && <button type="button" data-handle="resize" aria-label="Resize item" className="resize-handle" onPointerDown={startResize} />}
     </div>
   );
 }
 
-export default function JournalStudio() {
+type ItemRow = { id: string; page_id: string; data: never; created_by: string | null };
+type PageRow = { id: string; title: string; paper: string; position: number };
+
+export default function JournalStudio({ journalId }: { journalId: string }) {
   const [journal, setJournal] = useState<JournalState>({ pages: [], active: 0 });
+  const [meta, setMeta] = useState<JournalMeta | null>(null);
+  const [userId, setUserId] = useState<string>();
+  const [userEmail, setUserEmail] = useState("");
+  const [people, setPeople] = useState<Person[]>([]);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [loadError, setLoadError] = useState("");
+  const [syncError, setSyncError] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [turning, setTurning] = useState(false);
   const [tab, setTab] = useState<"supplies" | "paper">("supplies");
   const [profiles, setProfiles] = useState<HandwritingProfile[]>([]);
+  const [foreignProfiles, setForeignProfiles] = useState<HandwritingProfile[]>([]);
   const [activeProfileId, setActiveProfileId] = useState<string>();
   const [handwritingOpen, setHandwritingOpen] = useState(false);
   const spreadRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const hydrated = useRef(false);
+  const snapshot = useRef(new Map<string, string>());
+  const sentKeys = useRef(new Map<string, string>());
+  const requestedProfiles = useRef(new Set<string>());
+
+  const refreshPeople = useCallback(async () => {
+    if (meta) setPeople(await loadPeople(journalId, meta.owner_id));
+  }, [journalId, meta]);
 
   useEffect(() => {
-    const stored = window.localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      try { setJournal(JSON.parse(stored) as JournalState); } catch { window.localStorage.removeItem(STORAGE_KEY); }
-    } else setJournal(starterState());
-    hydrated.current = true;
-  }, []);
+    let cancelled = false;
+    hydrated.current = false;
+    void (async () => {
+      const user = await currentUser();
+      if (user) { setUserId(user.id); setUserEmail(user.email?.toLowerCase() ?? ""); await ensureProfile(user); }
+      const loaded = await loadJournal(journalId);
+      if (cancelled) return;
+      if (!loaded) { setLoadError("This journal isn't on your shelf, or its owner stopped sharing it."); return; }
+      snapshot.current = snapshotOf(loaded.pages);
+      setMeta(loaded.meta);
+      setJournal({ pages: loaded.pages.length ? loaded.pages : [{ id: makeId(), title: "Page 1", paper: "vintage", items: [] }], active: 0 });
+      hydrated.current = true;
+      setPeople(await loadPeople(journalId, loaded.meta.owner_id));
+    })().catch(() => !cancelled && setLoadError("This journal couldn't be opened. Please try again."));
+    return () => { cancelled = true; };
+  }, [journalId]);
 
   useEffect(() => {
     void loadProfiles().then((stored) => {
@@ -246,15 +232,85 @@ export default function JournalStudio() {
     });
   }, []);
 
+  // Fetch handwriting belonging to other people so their text renders correctly.
+  useEffect(() => {
+    const known = new Set([...profiles, ...foreignProfiles].map((profile) => profile.id));
+    const missing = [...new Set(journal.pages.flatMap((page) => page.items.map((item) => item.profileId).filter((id): id is string => Boolean(id))))].filter((id) => !known.has(id) && !requestedProfiles.current.has(id));
+    if (!missing.length) return;
+    missing.forEach((id) => requestedProfiles.current.add(id));
+    void loadProfilesByIds(missing).then((found) => setForeignProfiles((current) => [...current, ...found]));
+  }, [journal.pages, profiles, foreignProfiles]);
+
   useEffect(() => {
     if (!hydrated.current) return;
     const timer = window.setTimeout(() => {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(journal));
-      setSaved(true);
-      window.setTimeout(() => setSaved(false), 1400);
-    }, 350);
+      const pages = journal.pages;
+      const previous = snapshot.current;
+      const next = snapshotOf(pages);
+      let changed = previous.size !== next.size;
+      next.forEach((value, key) => { if (previous.get(key) !== value) { changed = true; sentKeys.current.set(key, value); } });
+      if (!changed) return;
+      snapshot.current = next;
+      void pushChanges(journalId, previous, pages)
+        .then(() => { setSyncError(false); setSaved(true); window.setTimeout(() => setSaved(false), 1400); })
+        .catch(() => { snapshot.current = previous; setSyncError(true); });
+    }, 450);
     return () => window.clearTimeout(timer);
-  }, [journal]);
+  }, [journal.pages, journalId]);
+
+  // Live updates from collaborators.
+  useEffect(() => {
+    if (!meta) return;
+    const removeItem = (id: string) => {
+      snapshot.current.delete(`i:${id}`);
+      setJournal((current) => ({ ...current, pages: current.pages.map((page) => page.items.some((item) => item.id === id) ? { ...page, items: page.items.filter((item) => item.id !== id) } : page) }));
+    };
+    const upsertItem = (row: ItemRow) => {
+      if (!row?.data) return;
+      const item = rowToItem(row);
+      const key = itemKey(item, row.page_id);
+      if (sentKeys.current.get(`i:${item.id}`) === key) { sentKeys.current.delete(`i:${item.id}`); return; }
+      snapshot.current.set(`i:${item.id}`, key);
+      setJournal((current) => ({ ...current, pages: current.pages.map((page) => {
+        const without = page.items.filter((entry) => entry.id !== item.id);
+        if (page.id === row.page_id) return { ...page, items: [...without, item] };
+        return without.length === page.items.length ? page : { ...page, items: without };
+      }) }));
+    };
+    const upsertPage = (row: PageRow) => {
+      const page: JournalPage = { id: row.id, title: row.title, paper: row.paper as Paper, items: [] };
+      const key = pageKey(page, row.position);
+      if (sentKeys.current.get(`p:${row.id}`) === key) { sentKeys.current.delete(`p:${row.id}`); return; }
+      snapshot.current.set(`p:${row.id}`, key);
+      setJournal((current) => {
+        const existing = current.pages.find((entry) => entry.id === row.id);
+        const others = current.pages.filter((entry) => entry.id !== row.id);
+        const merged = existing ? { ...existing, title: row.title, paper: page.paper } : page;
+        const pages = [...others];
+        pages.splice(Math.max(0, Math.min(pages.length, row.position)), 0, merged);
+        return { ...current, pages };
+      });
+    };
+    const removePage = (id: string) => {
+      snapshot.current.delete(`p:${id}`);
+      setJournal((current) => {
+        if (!current.pages.some((page) => page.id === id)) return current;
+        const pages = current.pages.filter((page) => page.id !== id);
+        return { pages, active: Math.min(current.active, Math.max(0, pages.length - 1)) };
+      });
+    };
+    const filter = `journal_id=eq.${journalId}`;
+    const channel = supabase
+      .channel(`journal-${journalId}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "journal_items", filter }, (payload) => upsertItem(payload.new as ItemRow))
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "journal_items", filter }, (payload) => upsertItem(payload.new as ItemRow))
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "journal_items" }, (payload) => { const id = (payload.old as { id?: string }).id; if (id) removeItem(id); })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "journal_pages", filter }, (payload) => upsertPage(payload.new as PageRow))
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "journal_pages", filter }, (payload) => upsertPage(payload.new as PageRow))
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "journal_pages" }, (payload) => { const id = (payload.old as { id?: string }).id; if (id) removePage(id); })
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [meta, journalId]);
 
   useEffect(() => {
     const paste = (event: ClipboardEvent) => {
@@ -270,7 +326,16 @@ export default function JournalStudio() {
     [journal],
   );
   const selectedItem = journal.pages.flatMap((page) => page.items).find((item) => item.id === selected);
+  const allProfiles = useMemo(() => [...profiles, ...foreignProfiles.filter((profile) => !profiles.some((own) => own.id === profile.id))], [profiles, foreignProfiles]);
+  const isOwner = Boolean(meta && userId && meta.owner_id === userId);
+  const tagFor = (item: JournalItem) => {
+    if (people.length < 2 || !item.createdBy) return undefined;
+    const person = people.find((entry) => entry.userId === item.createdBy);
+    const name = person?.name ?? "Someone";
+    return { label: name.charAt(0).toUpperCase(), name: item.createdBy === userId ? "you" : name, color: personColor(item.createdBy) };
+  };
 
+  if (loadError) return <main className="studio-loading" role="alert"><div className="studio-missing"><p>{loadError}</p><Link to="/shelf" className="paper-button">Back to the shelf</Link></div></main>;
   if (journal.pages.length === 0) return <main className="studio-loading" aria-label="Opening journal"><Sparkles size={22} /></main>;
 
   const updatePage = (pageId: string, updater: (page: JournalPage) => JournalPage) => {
@@ -281,16 +346,14 @@ export default function JournalStudio() {
     if (!pageId) return;
     const sizes: Record<Kind, [number, number]> = { text: [42, 15], image: [42, 34], sticker: [18, 18], tape: [34, 8], scrap: [42, 24], ticket: [28, 15], stamp: [18, 13], doodle: [28, 10] };
     const [width, height] = sizes[kind];
-    const item: JournalItem = { id: makeId(), kind, content, x: 25, y: 28, width, height, rotation: kind === "text" ? -1 : 2, z: Date.now(), ...(kind === "image" ? { frame: "polaroid" as const } : {}), ...(kind === "text" ? { ...(activeProfileId ? { profileId: activeProfileId } : {}), inkColor: "#3b302a", fontSize: 28 } : {}) };
+    const item: JournalItem = { id: makeId(), kind, content, x: 25, y: 28, width, height, rotation: kind === "text" ? -1 : 2, z: Date.now(), createdBy: userId ?? null, ...(kind === "image" ? { frame: "polaroid" as const } : {}), ...(kind === "text" ? { ...(activeProfileId ? { profileId: activeProfileId } : {}), inkColor: "#3b302a", fontSize: 28 } : {}) };
     updatePage(pageId, (page) => ({ ...page, items: [...page.items, item] }));
     setSelected(item.id);
   };
 
   const addImage = (file: File, pageId?: string) => {
     if (!file.type.startsWith("image/")) return;
-    const reader = new FileReader();
-    reader.onload = () => typeof reader.result === "string" && addItem("image", reader.result, pageId);
-    reader.readAsDataURL(file);
+    void downscaleImage(file).then((data) => addItem("image", data, pageId));
   };
 
   const patchItem = (pageId: string, id: string, patch: Partial<JournalItem>) => updatePage(pageId, (page) => ({
@@ -309,7 +372,7 @@ export default function JournalStudio() {
     if (!page || !item) return;
     if (action === "delete") return removeItem(page.id, item.id);
     if (action === "duplicate") {
-      const copy = { ...item, id: makeId(), x: item.x + 4, y: item.y + 4, z: Date.now() };
+      const copy = { ...item, id: makeId(), x: item.x + 4, y: item.y + 4, z: Date.now(), createdBy: userId ?? null };
       updatePage(page.id, (current) => ({ ...current, items: [...current.items, copy] }));
       return setSelected(copy.id);
     }
@@ -370,9 +433,11 @@ export default function JournalStudio() {
   return (
     <main className="studio-shell" onClick={() => setSelected(null)}>
       <header className="studio-header">
-        <div className="brand-lockup"><Sparkles size={17} /><span>Tucked Away</span><small>junk journal</small></div>
-        <div className={`save-note ${saved ? "save-note-visible" : ""}`}>tucked safely away ✓</div>
+        <div className="brand-lockup"><Link to="/shelf" className="shelf-back" aria-label="Back to the shelf" title="Back to the shelf"><ArrowLeft size={16} /></Link><span>{meta?.title ?? "Tucked Away"}</span><small>{isOwner ? "your journal" : "shared with you"}</small></div>
+        <div className={`save-note ${saved || syncError ? "save-note-visible" : ""}`}>{syncError ? "couldn't save yet — keep going, we'll retry" : "tucked safely away ✓"}</div>
         <div className="header-actions">
+          {people.length > 1 && <div className="people-dots" aria-label="People in this journal">{people.map((person) => <span key={person.key} title={`${person.name}${person.role === "owner" ? " (owner)" : ""}`} style={{ background: personColor(person.key) }}>{person.name.charAt(0).toUpperCase()}</span>)}</div>}
+          <button type="button" className="paper-button" onClick={(event) => { event.stopPropagation(); setShareOpen(true); }}><Share2 size={16} /> Share</button>
           <button type="button" className="paper-button" onClick={exportPng}><FileImage size={16} /> Save image</button>
           <button type="button" className="paper-button primary-paper-button" onClick={exportPdf}><Download size={16} /> Export PDF</button>
         </div>
@@ -448,7 +513,7 @@ export default function JournalStudio() {
               }} /></label><select aria-label="Handwriting profile" value={selectedItem.profileId ?? ""} onChange={(event) => {
                 const page = journal.pages.find((candidate) => candidate.items.some((item) => item.id === selectedItem.id));
                 if (page) patchItem(page.id, selectedItem.id, event.target.value ? { profileId: event.target.value } : { profileId: "" });
-              }}><option value="">Default pen</option>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</select></>}
+              }}><option value="">Default pen</option>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}{selectedItem.profileId && !profiles.some((profile) => profile.id === selectedItem.profileId) && <option value={selectedItem.profileId}>{foreignProfiles.find((profile) => profile.id === selectedItem.profileId)?.name ?? "Their handwriting"}</option>}</select></>}
             </div>
           )}
 
@@ -469,7 +534,7 @@ export default function JournalStudio() {
               >
                 <span className="page-corner-mark">{String(journal.pages.indexOf(page) + 1).padStart(2, "0")}</span>
                 {page.items.map((item) => (
-                  <EditableItem key={item.id} item={item} profiles={profiles} selected={selected === item.id} onSelect={() => setSelected(item.id)} onChange={(patch) => patchItem(page.id, item.id, patch)} onDelete={() => removeItem(page.id, item.id)} />
+                  <EditableItem key={item.id} item={item} profiles={allProfiles} tag={tagFor(item)} selected={selected === item.id} onSelect={() => setSelected(item.id)} onChange={(patch) => patchItem(page.id, item.id, patch)} onDelete={() => removeItem(page.id, item.id)} />
                 ))}
                 {page.items.length === 0 && <div className="empty-page"><span>✦</span><p>make a little mess</p><small>drop, paste, or choose something from the drawer</small></div>}
               </article>
@@ -514,6 +579,7 @@ export default function JournalStudio() {
         </div>
       </footer>
       {handwritingOpen && <HandwritingStudio profiles={profiles} activeId={activeProfileId} onSave={persistProfile} onDelete={removeProfile} onSelect={setActiveProfileId} onClose={() => setHandwritingOpen(false)} />}
+      {shareOpen && meta && <SharePanel journalId={journalId} title={meta.title} isOwner={isOwner} userEmail={userEmail} people={people} onChanged={() => void refreshPeople()} onClose={() => setShareOpen(false)} />}
     </main>
   );
 }
