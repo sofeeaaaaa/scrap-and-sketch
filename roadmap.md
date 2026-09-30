@@ -1,7 +1,8 @@
 # Roadmap
 
-- [x] Add handwriting template, drawing, scan processing, and profile storage
-- [x] Add profile manager and per-character correction UI
-- [x] Render stable handwriting variations in journal text boxes
-- [x] Add text controls for profile, ink color, and size
-- [x] Verify persistence, upload/draw paths, export rendering, desktop, and mobile
+- [x] Handwriting feature
+- [x] Accounts (email + Google), shelf with covers, "Shared with me"
+- [x] Journals stored in Cloud with live collaboration and maker tags
+- [x] Share panel: view-only link, invite by email, remove access
+- [x] Read-only book viewer with cover and page turns
+- [x] Move browser journal + handwriting into account on first sign-in
