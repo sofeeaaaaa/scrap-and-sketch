@@ -245,7 +245,10 @@ export default function JournalStudio() {
     return () => window.removeEventListener("paste", paste);
   });
 
-  const visiblePages = useMemo(() => [journal.pages[journal.active], journal.pages[journal.active + 1]].filter(Boolean), [journal]);
+  const visiblePages = useMemo(
+    () => [journal.pages[journal.active], journal.pages[journal.active + 1]].filter((page): page is JournalPage => page !== undefined),
+    [journal],
+  );
   const selectedItem = journal.pages.flatMap((page) => page.items).find((item) => item.id === selected);
 
   const updatePage = (pageId: string, updater: (page: JournalPage) => JournalPage) => {
@@ -256,7 +259,7 @@ export default function JournalStudio() {
     if (!pageId) return;
     const sizes: Record<Kind, [number, number]> = { text: [42, 15], image: [42, 34], sticker: [18, 18], tape: [34, 8], scrap: [42, 24], ticket: [28, 15], stamp: [18, 13], doodle: [28, 10] };
     const [width, height] = sizes[kind];
-    const item: JournalItem = { id: makeId(), kind, content, x: 25, y: 28, width, height, rotation: kind === "text" ? -1 : 2, z: Date.now(), frame: kind === "image" ? "polaroid" : undefined };
+    const item: JournalItem = { id: makeId(), kind, content, x: 25, y: 28, width, height, rotation: kind === "text" ? -1 : 2, z: Date.now(), ...(kind === "image" ? { frame: "polaroid" as const } : {}) };
     updatePage(pageId, (page) => ({ ...page, items: [...page.items, item] }));
     setSelected(item.id);
   };
