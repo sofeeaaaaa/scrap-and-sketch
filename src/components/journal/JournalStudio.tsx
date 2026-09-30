@@ -271,6 +271,8 @@ export default function JournalStudio() {
   );
   const selectedItem = journal.pages.flatMap((page) => page.items).find((item) => item.id === selected);
 
+  if (journal.pages.length === 0) return <main className="studio-loading" aria-label="Opening journal"><Sparkles size={22} /></main>;
+
   const updatePage = (pageId: string, updater: (page: JournalPage) => JournalPage) => {
     setJournal((current) => ({ ...current, pages: current.pages.map((page) => page.id === pageId ? updater(page) : page) }));
   };
