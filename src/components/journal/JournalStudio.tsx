@@ -120,6 +120,8 @@ function starterState(): JournalState {
   };
 }
 
+const INITIAL_JOURNAL = starterState();
+
 function ToolButton({ label, onClick, active, children }: { label: string; onClick?: () => void; active?: boolean; children: ReactNode }) {
   return (
     <button type="button" aria-label={label} title={label} onClick={onClick} className={`tool-button ${active ? "tool-button-active" : ""}`}>
@@ -219,7 +221,7 @@ function EditableItem({ item, selected, profiles, onSelect, onChange, onDelete }
 }
 
 export default function JournalStudio() {
-  const [journal, setJournal] = useState<JournalState>(starterState);
+  const [journal, setJournal] = useState<JournalState>(INITIAL_JOURNAL);
   const [selected, setSelected] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [turning, setTurning] = useState(false);
@@ -279,7 +281,7 @@ export default function JournalStudio() {
     if (!pageId) return;
     const sizes: Record<Kind, [number, number]> = { text: [42, 15], image: [42, 34], sticker: [18, 18], tape: [34, 8], scrap: [42, 24], ticket: [28, 15], stamp: [18, 13], doodle: [28, 10] };
     const [width, height] = sizes[kind];
-    const item: JournalItem = { id: makeId(), kind, content, x: 25, y: 28, width, height, rotation: kind === "text" ? -1 : 2, z: Date.now(), ...(kind === "image" ? { frame: "polaroid" as const } : {}), ...(kind === "text" ? { profileId: activeProfileId, inkColor: "#3b302a", fontSize: 28 } : {}) };
+    const item: JournalItem = { id: makeId(), kind, content, x: 25, y: 28, width, height, rotation: kind === "text" ? -1 : 2, z: Date.now(), ...(kind === "image" ? { frame: "polaroid" as const } : {}), ...(kind === "text" ? { ...(activeProfileId ? { profileId: activeProfileId } : {}), inkColor: "#3b302a", fontSize: 28 } : {}) };
     updatePage(pageId, (page) => ({ ...page, items: [...page.items, item] }));
     setSelected(item.id);
   };
@@ -445,7 +447,7 @@ export default function JournalStudio() {
                 if (page) patchItem(page.id, selectedItem.id, { fontSize: Number(event.target.value) });
               }} /></label><select aria-label="Handwriting profile" value={selectedItem.profileId ?? ""} onChange={(event) => {
                 const page = journal.pages.find((candidate) => candidate.items.some((item) => item.id === selectedItem.id));
-                if (page) patchItem(page.id, selectedItem.id, { profileId: event.target.value || undefined });
+                if (page) patchItem(page.id, selectedItem.id, event.target.value ? { profileId: event.target.value } : { profileId: "" });
               }}><option value="">Default pen</option>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</select></>}
             </div>
           )}

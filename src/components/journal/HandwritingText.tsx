@@ -2,7 +2,7 @@ import type { CSSProperties } from "react";
 import type { HandwritingProfile } from "./handwriting";
 import { glyphStyle } from "./handwriting";
 
-export function HandwritingText({ itemId, text, profile, color, size }: { itemId: string; text: string; profile?: HandwritingProfile; color: string; size: number }) {
+export function HandwritingText({ itemId, text, profile, color, size }: { itemId: string; text: string; profile: HandwritingProfile | undefined; color: string; size: number }) {
   return (
     <div className="handwriting-line" style={{ "--handwriting-color": color, "--handwriting-size": `${size}px` } as CSSProperties}>
       {Array.from(text).map((character, index) => {

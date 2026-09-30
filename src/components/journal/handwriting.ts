@@ -62,7 +62,7 @@ export function renderTemplate(pageIndex: number, target: HTMLCanvasElement) {
   context.fillText(`Sheet ${pageIndex + 1} of ${pages.length} · Write each character four times in dark ink`, 70, 108);
   context.strokeStyle = "#27211d";
   context.lineWidth = 4;
-  [[28, 28], [width - 28, 28], [28, height - 28], [width - 28, height - 28]].forEach(([x, y]) => {
+  ([[28, 28], [width - 28, 28], [28, height - 28], [width - 28, height - 28]] as Array<[number, number]>).forEach(([x, y]) => {
     context.beginPath(); context.moveTo(x - 12, y); context.lineTo(x + 12, y); context.moveTo(x, y - 12); context.lineTo(x, y + 12); context.stroke();
   });
   const marginX = 70;
