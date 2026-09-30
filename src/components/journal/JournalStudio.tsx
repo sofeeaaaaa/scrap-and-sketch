@@ -120,8 +120,6 @@ function starterState(): JournalState {
   };
 }
 
-const INITIAL_JOURNAL = starterState();
-
 function ToolButton({ label, onClick, active, children }: { label: string; onClick?: () => void; active?: boolean; children: ReactNode }) {
   return (
     <button type="button" aria-label={label} title={label} onClick={onClick} className={`tool-button ${active ? "tool-button-active" : ""}`}>
@@ -221,7 +219,7 @@ function EditableItem({ item, selected, profiles, onSelect, onChange, onDelete }
 }
 
 export default function JournalStudio() {
-  const [journal, setJournal] = useState<JournalState>(INITIAL_JOURNAL);
+  const [journal, setJournal] = useState<JournalState>({ pages: [], active: 0 });
   const [selected, setSelected] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [turning, setTurning] = useState(false);
@@ -237,7 +235,7 @@ export default function JournalStudio() {
     const stored = window.localStorage.getItem(STORAGE_KEY);
     if (stored) {
       try { setJournal(JSON.parse(stored) as JournalState); } catch { window.localStorage.removeItem(STORAGE_KEY); }
-    }
+    } else setJournal(starterState());
     hydrated.current = true;
   }, []);
 
