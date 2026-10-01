@@ -74,7 +74,7 @@ function Shelf() {
       {note && <p className="shelf-note" role="status">{note}</p>}
       <section className="shelf-section">
         <div className="shelf-heading"><h2>My journals</h2><Button type="button" size="sm" onClick={() => setCreating((value) => !value)}><Plus /> New journal</Button></div>
-        {creating && <form className="new-journal" onSubmit={(event) => { event.preventDefault(); void createJournal(title.trim() || "New journal", cover).then((id) => navigate({ to: "/journal/$journalId", params: { journalId: id } })); }}>
+        {creating && <form className="new-journal" onSubmit={(event) => { event.preventDefault(); void createJournal(title.trim() || "New journal", cover).then((id) => navigate({ to: "/journal/$journalId", params: { journalId: id } })).catch(() => setNote("That journal couldn't be made just now. Please try again.")); }}>
           <label>Title<input value={title} maxLength={48} onChange={(event) => setTitle(event.target.value)} /></label>
           <div className="cover-picker" role="radiogroup" aria-label="Cover">{Object.entries(COVERS).map(([key, label]) => <button type="button" role="radio" aria-checked={cover === key} key={key} title={label} className={`cover-swatch cover-${key} ${cover === key ? "active" : ""}`} onClick={() => setCover(key)} />)}</div>
           <Button type="submit">Make it</Button>
