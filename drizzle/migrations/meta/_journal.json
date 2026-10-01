@@ -8,6 +8,13 @@
       "when": 1790803085584,
       "tag": "0000_journals_sharing",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1790829709571,
+      "tag": "0001_fix_journal_insert_select",
+      "breakpoints": true
     }
   ]
 }
