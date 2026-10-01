@@ -1,0 +1,2 @@
+DROP POLICY "journals readable with access" ON public.journals;
+CREATE POLICY "journals readable with access" ON public.journals FOR SELECT TO authenticated USING (owner_id = auth.uid() OR public.has_journal_access(id));
