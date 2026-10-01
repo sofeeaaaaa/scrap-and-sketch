@@ -190,7 +190,7 @@ export default function JournalStudio({ journalId }: { journalId: string }) {
   const [syncError, setSyncError] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
-  const [turning, setTurning] = useState(false);
+  const [goTo, setGoTo] = useState<{ key: string; nonce: number }>();
   const [tab, setTab] = useState<"supplies" | "paper">("supplies");
   const [profiles, setProfiles] = useState<HandwritingProfile[]>([]);
   const [foreignProfiles, setForeignProfiles] = useState<HandwritingProfile[]>([]);
@@ -321,10 +321,6 @@ export default function JournalStudio({ journalId }: { journalId: string }) {
     return () => window.removeEventListener("paste", paste);
   });
 
-  const visiblePages = useMemo(
-    () => [journal.pages[journal.active], journal.pages[journal.active + 1]].filter((page): page is JournalPage => page !== undefined),
-    [journal],
-  );
   const selectedItem = journal.pages.flatMap((page) => page.items).find((item) => item.id === selected);
   const allProfiles = useMemo(() => [...profiles, ...foreignProfiles.filter((profile) => !profiles.some((own) => own.id === profile.id))], [profiles, foreignProfiles]);
   const isOwner = Boolean(meta && userId && meta.owner_id === userId);
@@ -379,14 +375,11 @@ export default function JournalStudio({ journalId }: { journalId: string }) {
     patchItem(page.id, item.id, { z: action === "forward" ? Math.max(...page.items.map((entry) => entry.z), 0) + 1 : Math.min(...page.items.map((entry) => entry.z), 0) - 1 });
   };
 
-  const turn = (direction: number) => {
-    const next = Math.max(0, Math.min(journal.pages.length - 1, journal.active + direction));
-    if (next === journal.active) return;
-    setTurning(true);
-    window.setTimeout(() => { setJournal((current) => ({ ...current, active: next })); setSelected(null); setTurning(false); }, 180);
+  const addPage = () => {
+    const page: JournalPage = { id: makeId(), title: `Page ${journal.pages.length + 1}`, paper: "vintage", items: [] };
+    setJournal((current) => ({ ...current, pages: [...current.pages, page], active: current.pages.length }));
+    setGoTo({ key: page.id, nonce: Date.now() });
   };
-
-  const addPage = () => setJournal((current) => ({ ...current, pages: [...current.pages, { id: makeId(), title: `Page ${current.pages.length + 1}`, paper: "vintage", items: [] }], active: current.pages.length }));
   const deletePage = () => setJournal((current) => {
     if (current.pages.length === 1) return current;
     const pages = current.pages.filter((_, index) => index !== current.active);
@@ -522,27 +515,33 @@ export default function JournalStudio({ journalId }: { journalId: string }) {
             if (page) patchItem(page.id, selectedItem.id, { content: event.target.value });
           }} /></div>}
 
-          <button type="button" aria-label="Previous page" className="page-arrow page-arrow-left" onClick={() => turn(-1)}><ChevronLeft /></button>
-          <div ref={spreadRef} className={`journal-spread ${turning ? "page-turning" : ""}`}>
-            {visiblePages.map((page, spreadIndex) => (
-              <article
-                key={page.id}
-                className={`journal-page paper-${page.paper} ${spreadIndex === 0 ? "left-page" : "right-page"}`}
-                onClick={(event) => event.stopPropagation()}
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={(event) => { event.preventDefault(); const file = event.dataTransfer.files[0]; if (file) addImage(file, page.id); }}
-              >
-                <span className="page-corner-mark">{String(journal.pages.indexOf(page) + 1).padStart(2, "0")}</span>
-                {page.items.map((item) => (
-                  <EditableItem key={item.id} item={item} profiles={allProfiles} tag={tagFor(item)} selected={selected === item.id} onSelect={() => setSelected(item.id)} onChange={(patch) => patchItem(page.id, item.id, patch)} onDelete={() => removeItem(page.id, item.id)} />
-                ))}
-                {page.items.length === 0 && <div className="empty-page"><span>✦</span><p>make a little mess</p><small>drop, paste, or choose something from the drawer</small></div>}
-              </article>
-            ))}
-            {visiblePages.length === 1 && <article className="journal-page blank-companion"><p>the rest is unwritten</p></article>}
-            <div className="book-seam" />
-          </div>
-          <button type="button" aria-label="Next page" className="page-arrow page-arrow-right" onClick={() => turn(1)}><ChevronRight /></button>
+          <FlipBook
+            bookRef={spreadRef}
+            goTo={goTo}
+            onFlipStart={() => setSelected(null)}
+            onVisibleChange={(keys) => {
+              const index = journal.pages.findIndex((page) => keys.includes(page.id));
+              if (index >= 0 && index !== journal.active) setJournal((current) => ({ ...current, active: index }));
+            }}
+            faces={bookFaces(journal.pages, meta?.title ?? "", meta?.cover ?? "rust", (page, interactive, side) => {
+              const number = journal.pages.indexOf(page) + 1;
+              if (!interactive) return <StaticPage page={page} number={number} side={side} profiles={allProfiles} tagFor={tagFor} />;
+              return (
+                <article
+                  className={`journal-page paper-${page.paper} ${side === "left" ? "left-page" : "right-page"}`}
+                  onClick={(event) => event.stopPropagation()}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => { event.preventDefault(); const file = event.dataTransfer.files[0]; if (file) addImage(file, page.id); }}
+                >
+                  <span className="page-corner-mark">{String(number).padStart(2, "0")}</span>
+                  {page.items.map((item) => (
+                    <EditableItem key={item.id} item={item} profiles={allProfiles} tag={tagFor(item)} selected={selected === item.id} onSelect={() => setSelected(item.id)} onChange={(patch) => patchItem(page.id, item.id, patch)} onDelete={() => removeItem(page.id, item.id)} />
+                  ))}
+                  {page.items.length === 0 && <div className="empty-page"><span>✦</span><p>make a little mess</p><small>drop, paste, or choose something from the drawer</small></div>}
+                </article>
+              );
+            })}
+          />
         </section>
       </section>
 
@@ -554,7 +553,7 @@ export default function JournalStudio({ journalId }: { journalId: string }) {
               draggable
               key={page.id}
               className={`page-thumbnail ${index === journal.active ? "active" : ""}`}
-              onClick={() => setJournal((current) => ({ ...current, active: index }))}
+              onClick={() => { setJournal((current) => ({ ...current, active: index })); setGoTo({ key: page.id, nonce: Date.now() }); }}
               onDragStart={(event) => event.dataTransfer.setData("text/page-index", String(index))}
               onDragOver={(event) => event.preventDefault()}
               onDrop={(event) => {
