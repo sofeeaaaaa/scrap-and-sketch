@@ -196,6 +196,7 @@ export default function FlipBook({ faces, goTo, onVisibleChange, onFlipStart, dr
       if (!state) return;
       if (Math.abs(moveEvent.clientX - state.startX) > 6) state.moved = true;
       if (!state.moved) return;
+      if (single) { paint(Math.max(0, Math.min(1, (dir > 0 ? 0 : 1) - (moveEvent.clientX - state.startX) / state.width))); return; }
       const cos = Math.max(-1, Math.min(1, (moveEvent.clientX - state.spineX) / state.width));
       paint(Math.acos(cos) / Math.PI);
     };
