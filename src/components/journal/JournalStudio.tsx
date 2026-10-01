@@ -37,6 +37,7 @@ import { supabase } from "@/integrations/supabase/client";
 import HandwritingStudio from "./HandwritingStudio";
 import { HandwritingText } from "./HandwritingText";
 import SharePanel from "./SharePanel";
+import FlipBook, { type BookFace, type FaceSide } from "./FlipBook";
 import type { HandwritingProfile } from "./handwriting";
 import { deleteProfile, loadProfiles, loadProfilesByIds, saveProfile } from "./handwritingStorage";
 import { type Frame, type JournalItem, type JournalPage, type JournalState, type Kind, type Paper, makeId, personColor } from "./types";
@@ -99,6 +100,35 @@ export function ItemContent({ item, profiles = [] }: { item: JournalItem; profil
   if (item.kind === "stamp") return <div className="stamp-art">{item.content}</div>;
   if (item.kind === "doodle") return <div className="doodle-art">{item.content}</div>;
   return <div className="paper-scrap">{item.content}</div>;
+}
+
+export function StaticPage({ page, number, side, profiles, tagFor }: { page: JournalPage; number: number; side: FaceSide; profiles: HandwritingProfile[]; tagFor?: (item: JournalItem) => { label: string; name: string; color: string } | undefined }) {
+  return (
+    <article className={`journal-page paper-${page.paper} ${side === "left" ? "left-page" : "right-page"}`}>
+      <span className="page-corner-mark">{String(number).padStart(2, "0")}</span>
+      {page.items.map((item) => {
+        const tag = tagFor?.(item);
+        return (
+          <div key={item.id} className="journal-item" style={{ left: `${item.x}%`, top: `${item.y}%`, width: `${item.width}%`, height: `${item.height}%`, transform: `rotate(${item.rotation}deg)`, zIndex: item.z }}>
+            <ItemContent item={item} profiles={profiles} />
+            {tag && <span className="maker-tag" style={{ background: tag.color }}>{tag.label}</span>}
+          </div>
+        );
+      })}
+    </article>
+  );
+}
+
+export function bookFaces(pages: JournalPage[], title: string, cover: string, renderPage: (page: JournalPage, interactive: boolean, side: FaceSide) => ReactNode): BookFace[] {
+  const faces: BookFace[] = [
+    { key: "cover-front", kind: "cover", render: () => <div className={`journal-cover cover-${cover}`}><span className="cover-label">{title}</span></div> },
+    { key: "endpaper-front", kind: "endpaper", render: () => <div className="journal-endpaper" /> },
+    ...pages.map((page): BookFace => ({ key: page.id, kind: "page", render: (interactive, side) => renderPage(page, interactive, side) })),
+  ];
+  if (pages.length % 2 === 1) faces.push({ key: "blank-end", kind: "blank", render: () => <article className="journal-page blank-companion"><p>the rest is unwritten</p></article> });
+  faces.push({ key: "endpaper-back", kind: "endpaper", render: () => <div className="journal-endpaper" /> });
+  faces.push({ key: "cover-back", kind: "cover", render: () => <div className={`journal-cover journal-cover-back cover-${cover}`} /> });
+  return faces;
 }
 
 function EditableItem({ item, selected, profiles, tag, onSelect, onChange, onDelete }: {
