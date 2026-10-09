@@ -172,3 +172,25 @@ export function imageFileToCanvas(file: File): Promise<HTMLCanvasElement> {
 
 // Keep device drawing coordinates intact between strokes; transparent pixels are never ink.
 export function processDrawnCell(source: HTMLCanvasElement) { return trimmedGlyph(source, false); }
+
+/** Trim only the persisted copy, never the live drawing surface between strokes. */
+export async function prepareGlyphs(glyphs: GlyphMap): Promise<GlyphMap> {
+  const entries = await Promise.all(Object.entries(glyphs).map(async ([character, variants]) => {
+    const prepared = await Promise.all(variants.map((value) => {
+      if (!value) return Promise.resolve(null);
+      return new Promise<string | null>((resolve) => {
+        const image = new Image();
+        image.onload = () => {
+          const canvas = document.createElement("canvas");
+          canvas.width = image.width; canvas.height = image.height;
+          canvas.getContext("2d")?.drawImage(image, 0, 0);
+          resolve(trimmedGlyph(canvas));
+        };
+        image.onerror = () => resolve(value);
+        image.src = value;
+      });
+    }));
+    return [character, prepared] as const;
+  }));
+  return Object.fromEntries(entries);
+}

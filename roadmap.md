@@ -6,3 +6,4 @@
 - [x] Share panel: view-only link, invite by email, remove access
 - [x] Read-only book viewer with cover and page turns
 - [x] Move browser journal + handwriting into account on first sign-in
+- [x] Repair custom handwriting transparency, stroke stability, profile reopening, and confirmed account saves

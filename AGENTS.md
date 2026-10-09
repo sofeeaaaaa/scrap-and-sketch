@@ -13,3 +13,4 @@
 - Access is private by default: owner or invited email (journal_members) via has_journal_access(); view-only links go through the get_shared_journal(token) security-definer RPC so anonymous viewers never get table access.
 - Handwriting profiles live in the handwriting_profiles table (readable by people who share a journal with the owner) so shared text renders in the owner's handwriting; journal text stores only profile references. Legacy browser data is moved into the account once on first sign-in.
 - Per-character visual variation is deterministic from the text item and character position so the handwritten result remains stable across rendering and export.
+- Handwriting drawing keeps full-size transparent cell coordinates between strokes and trims only the saved copy, so strokes do not shift and glyphs render at text size; ink cleanup must preserve source alpha.

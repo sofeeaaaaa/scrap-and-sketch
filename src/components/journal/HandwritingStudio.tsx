@@ -2,7 +2,7 @@ import { Download, Eraser, Pencil, RotateCcw, Trash2, Upload, X } from "lucide-r
 import { type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from "react";
 import { jsPDF } from "jspdf";
 import { Button } from "@/components/ui/button";
-import { emptyGlyphs, imageFileToCanvas, processDrawnCell, renderTemplate, sliceTemplate, templatePages, type GlyphMap, type HandwritingProfile } from "./handwriting";
+import { emptyGlyphs, imageFileToCanvas, prepareGlyphs, processDrawnCell, renderTemplate, sliceTemplate, templatePages, type GlyphMap, type HandwritingProfile } from "./handwriting";
 
 function id() { return `${Date.now()}-${Math.random().toString(36).slice(2)}`; }
 
@@ -82,7 +82,7 @@ export default function HandwritingStudio({ profiles, activeId, onSave, onDelete
     const profileId = draftId ?? id();
     setSaving(true); setMessage("");
     try {
-      await onSave({ id: profileId, name: name.trim() || "My handwriting", glyphs, createdAt: selectedProfile?.createdAt ?? Date.now() });
+      await onSave({ id: profileId, name: name.trim() || "My handwriting", glyphs: await prepareGlyphs(glyphs), createdAt: selectedProfile?.createdAt ?? Date.now() });
       setDraftId(profileId); setMessage("Handwriting saved to your account.");
     } catch { setMessage("Your handwriting couldn't be saved. Your letters are still here — please try again."); }
     finally { setSaving(false); }
