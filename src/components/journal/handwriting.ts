@@ -94,7 +94,7 @@ export function renderTemplate(pageIndex: number, target: HTMLCanvasElement) {
   });
 }
 
-function trimmedGlyph(source: HTMLCanvasElement): string | null {
+function trimmedGlyph(source: HTMLCanvasElement, trim = true): string | null {
   const context = source.getContext("2d", { willReadFrequently: true });
   if (!context) return null;
   const image = context.getImageData(0, 0, source.width, source.height);
@@ -105,13 +105,14 @@ function trimmedGlyph(source: HTMLCanvasElement): string | null {
     const red = image.data[offset] ?? 255;
     const green = image.data[offset + 1] ?? 255;
     const blue = image.data[offset + 2] ?? 255;
-    const darkness = 255 - (red * .299 + green * .587 + blue * .114);
+    const darkness = (255 - (red * .299 + green * .587 + blue * .114)) * alpha / 255;
     if (alpha > 20 && darkness > 62) {
       left = Math.min(left, x); right = Math.max(right, x); top = Math.min(top, y); bottom = Math.max(bottom, y); inkCount += 1;
     }
   }
   if (inkCount < 18 || right < left || bottom < top) return null;
-  const pad = 5;
+  if (!trim) { left = 0; right = source.width - 1; top = 0; bottom = source.height - 1; }
+  const pad = trim ? 5 : 0;
   const output = document.createElement("canvas");
   output.width = Math.max(12, right - left + 1 + pad * 2);
   output.height = Math.max(12, bottom - top + 1 + pad * 2);
@@ -123,7 +124,8 @@ function trimmedGlyph(source: HTMLCanvasElement): string | null {
     const green = cropped.data[offset + 1] ?? 255;
     const blue = cropped.data[offset + 2] ?? 255;
     const darkness = Math.max(0, 255 - (red * .299 + green * .587 + blue * .114));
-    const alpha = darkness < 45 ? 0 : Math.min(255, (darkness - 35) * 2.7);
+    const originalAlpha = cropped.data[offset + 3] ?? 0;
+    const alpha = darkness < 45 ? 0 : Math.min(originalAlpha, (darkness - 35) * 2.7);
     cropped.data[offset] = 25; cropped.data[offset + 1] = 22; cropped.data[offset + 2] = 20; cropped.data[offset + 3] = alpha;
   }
   out.putImageData(cropped, pad, pad);
@@ -168,4 +170,5 @@ export function imageFileToCanvas(file: File): Promise<HTMLCanvasElement> {
   });
 }
 
-export function processDrawnCell(source: HTMLCanvasElement) { return trimmedGlyph(source); }
+// Keep device drawing coordinates intact between strokes; transparent pixels are never ink.
+export function processDrawnCell(source: HTMLCanvasElement) { return trimmedGlyph(source, false); }
