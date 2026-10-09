@@ -439,11 +439,12 @@ export default function JournalStudio({ journalId }: { journalId: string }) {
     }, 60);
   };
 
-  const persistProfile = (profile: HandwritingProfile) => {
-    void saveProfile(profile).then(() => {
+  const persistProfile = async (profile: HandwritingProfile) => {
+    await saveProfile(profile);
       setProfiles((current) => [...current.filter((entry) => entry.id !== profile.id), profile]);
       setActiveProfileId(profile.id);
-    });
+      const page = journal.pages.find((candidate) => candidate.items.some((item) => item.id === selected && item.kind === "text"));
+      if (page && selected) patchItem(page.id, selected, { profileId: profile.id });
   };
 
   const removeProfile = (id: string) => {
