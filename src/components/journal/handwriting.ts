@@ -147,9 +147,9 @@ export function sliceTemplate(source: HTMLCanvasElement, pageIndex: number): Gly
       const x = marginX + col * groupWidth + 3 + (variant % 2) * 132;
       const y = top + row * 218 + 42 + Math.floor(variant / 2) * 80;
       const cell = document.createElement("canvas");
-      cell.width = Math.round(118 * scaleX);
-      cell.height = Math.round(68 * scaleY);
-      cell.getContext("2d")?.drawImage(source, x * scaleX, y * scaleY, 118 * scaleX, 68 * scaleY, 0, 0, cell.width, cell.height);
+      cell.width = Math.round(106 * scaleX);
+      cell.height = Math.round(44 * scaleY);
+      cell.getContext("2d")?.drawImage(source, (x + 6) * scaleX, (y + 18) * scaleY, 106 * scaleX, 44 * scaleY, 0, 0, cell.width, cell.height);
       return trimmedGlyph(cell);
     });
   });
